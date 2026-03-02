@@ -103,7 +103,13 @@ async def main():
         if details["content"]:
             save_article(conn, article_url, details["title"], details["published_at"], details["content"])
             print(f"[save] 已儲存: {article_url}")
-        print(details)
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    POST_URL,
+                    json={"url": article_url, **details},
+                    headers={"X-Api-Key": API_KEY},
+                )
+                print(f"[post] 狀態碼: {resp.status_code}")
 
     conn.close()
 

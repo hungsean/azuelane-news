@@ -13,7 +13,7 @@ load_dotenv()
 SCRAPE_URL = os.environ["SCRAPE_URL"]
 POST_URL = os.environ["POST_URL"]
 API_KEY = os.environ["API_KEY"]
-DB_PATH = os.environ.get("DB_PATH", "news.db")
+DB_PATH = os.environ["DB_PATH"]
 
 
 def init_db(db_path: str) -> sqlite3.Connection:
@@ -21,8 +21,10 @@ def init_db(db_path: str) -> sqlite3.Connection:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS articles (
             url TEXT PRIMARY KEY,
+            title TEXT,
+            published_at DATETIME,
             content TEXT,
-            scraped_at TEXT
+            scraped_at DATETIME
         )
     """)
     conn.commit()
@@ -33,10 +35,10 @@ def is_article_saved(conn: sqlite3.Connection, url: str) -> bool:
     return conn.execute("SELECT 1 FROM articles WHERE url = ?", (url,)).fetchone() is not None
 
 
-def save_article(conn: sqlite3.Connection, url: str, content: str) -> None:
+def save_article(conn: sqlite3.Connection, url: str, title: str | None, published_at: str | None, content: str) -> None:
     conn.execute(
-        "INSERT OR REPLACE INTO articles (url, content, scraped_at) VALUES (?, ?, ?)",
-        (url, content, datetime.now().isoformat()),
+        "INSERT OR REPLACE INTO articles (url, title, published_at, content, scraped_at) VALUES (?, ?, ?, ?, ?)",
+        (url, title, published_at, content, datetime.now().isoformat()),
     )
     conn.commit()
 
@@ -60,10 +62,20 @@ async def fetch_page(url: str, wait_class: str) -> str:
         print("[fetch] 完成，瀏覽器已關閉")
         return html
 
-def parse_article_content(html: str) -> str | None:
+def parse_article_details(html: str) -> dict:
     soup = BeautifulSoup(html, "html.parser")
+
+    title_section = soup.select_one('[class="news-detail-title"]')
+    print("title section:", title_section)
+    title = title_section.find("h2").get_text(strip=True) if title_section and title_section.find("h2") else None
+    print("title: ", title)
+    published_at = title_section.find(class_="date").get_text(strip=True) if title_section and title_section.find(class_="date") else None
+    print("published_at: ", published_at)
+
     article = soup.find(class_="article-content")
-    return article.get_text(strip=True) if article else None
+    content = article.get_text(strip=True) if article else None
+
+    return {"title": title, "published_at": published_at, "content": content}
 
 
 def parse_news_items(html: str) -> list[str]:
@@ -86,11 +98,12 @@ async def main():
             continue
 
         article_html = await fetch_page(article_url, "article-content")
-        content = parse_article_content(article_html)
-        if content:
-            save_article(conn, article_url, content)
+        details = parse_article_details(article_html)
+        print(details)
+        if details["content"]:
+            save_article(conn, article_url, details["title"], details["published_at"], details["content"])
             print(f"[save] 已儲存: {article_url}")
-        print(content)
+        print(details)
 
     conn.close()
 

@@ -110,6 +110,8 @@ async def main():
                     headers={"X-Api-Key": API_KEY},
                 )
                 print(f"[post] 狀態碼: {resp.status_code}")
+                await asyncio.sleep(5)
+
 
     conn.close()
 
